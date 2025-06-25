@@ -1,28 +1,41 @@
+name: App With GitHub Actions + ArgoCD (nginx image auto-update)
 
-name: App With Github Actions with ArgoCD Basic
 on:
-  # workflow_dispatch
-  push
+  workflow_dispatch:      # 수동 실행 허용
+  push:                   # main 브랜치에 푸시될 때 자동 실행
+    branches: [ main ]
 
 jobs:
-  arcocd:
+  argocd:
     runs-on: ubuntu-latest
 
+    # GITHUB_TOKEN(자동 발급)으로 푸시하려면 최소 'contents: write' 권한 필요
+    permissions:
+      contents: write
+
     steps:
+    # 1) 체크아웃 ─ 동일 레포에서 작업할 경우 repository·token 옵션 불필요
     - uses: actions/checkout@v4
-      with:
-        repository: 
-        ref: main
-        token: ${{ secrets.GH_TOKEN }}
-        
-    - name: Set up Image
+
+    # 2) 이미지 태그 교체
+    - name: Patch nginx image tag
       run: |
-        sed -i "s%image: nginx:1.25%image: nginx:latest%" ./argocd-deployment.yaml
-        
-    - name: Commit and push changes
+        sed -i 's%image: nginx:1\.25%image: nginx:latest%' argocd-deployment.yaml
+
+    # 3) 변경이 있을 때만 커밋·푸시
+    - name: Commit & push if changed
       run: |
-        git config --local user.email ""
-        git config --local user.name ""
-        git add .
-        git commit -m "Update nginx image to latest"
+        # (1) 변경 내용 존재 여부 확인
+        if git diff --quiet; then
+          echo "No diff detected — skip commit."
+          exit 0
+        fi
+
+        # (2) CI용 Git 사용자 정보 설정 (로컬 범위)
+        git config --local user.name  "${{ github.actor }}"
+        git config --local user.email "${{ github.actor }}@users.noreply.github.com"
+
+        # (3) 커밋 및 푸시
+        git add argocd-deployment.yaml
+        git commit -m "chore: update nginx image to latest (CI)"
         git push
